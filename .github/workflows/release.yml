@@ -1,0 +1,276 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: true
+        type: string
+      create_new_release:
+        description: 'Create new GitHub release'
+        required: true
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Tag name for release (defaults to v{version})'
+        required: false
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+      tag: ${{ steps.get_version.outputs.tag }}
+    steps:
+      - name: Get version from tag or input
+        id: get_version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            version="${INPUT_VERSION}"
+            tag="${INPUT_TAG:-v${INPUT_VERSION}}"
+          else
+            version="${GITHUB_REF#refs/tags/v}"
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
+          echo "Version: ${version}, Tag: ${tag}"
+
+      - name: Create Release
+        id: create_release
+        if: github.event_name == 'push' || github.event.inputs.create_new_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.version }}
+          TAG: ${{ steps.get_version.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${TAG}" --repo "${REPO}" &>/dev/null; then
+            echo "Release ${TAG} already exists, skipping creation"
+            upload_url=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq '.upload_url')
+            echo "upload_url=${upload_url}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          gh release create "${TAG}" \
+            --repo "${REPO}" \
+            --title "Release ${TAG}" \
+            --notes "Release ${VERSION}
+
+          ## Installation
+
+          ### Homebrew
+          \`\`\`bash
+          brew tap ${REPO} https://github.com/${REPO}
+          brew install octui
+          \`\`\`
+
+          ### Cargo
+          \`\`\`bash
+          cargo install octui
+          \`\`\`
+
+          ### macOS (Apple Silicon)
+          \`\`\`bash
+          curl -L \"https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-aarch64-apple-darwin.tar.gz\" | tar xz
+          \`\`\`
+
+          ### macOS (Intel)
+          \`\`\`bash
+          curl -L \"https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-x86_64-apple-darwin.tar.gz\" | tar xz
+          \`\`\`
+
+          ### Linux (x86_64)
+          \`\`\`bash
+          curl -L \"https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-x86_64-unknown-linux-gnu.tar.gz\" | tar xz
+          \`\`\`" \
+            --draft=false \
+            --prerelease=false
+
+          upload_url=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq '.upload_url')
+          echo "upload_url=${upload_url}" >> $GITHUB_OUTPUT
+
+  build-release:
+    name: Build Release
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+            suffix: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: x86_64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create archive
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          cd "target/${TARGET}/release"
+          archive_name="octui-${VERSION}-${SUFFIX}.tar.gz"
+          tar czf "$archive_name" octui
+          ls -la "$archive_name"
+
+      - name: Upload Release Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+          TARGET: ${{ matrix.target }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          archive_name="octui-${VERSION}-${SUFFIX}.tar.gz"
+          gh release upload "${TAG}" \
+            --repo "${REPO}" \
+            "target/${TARGET}/release/${archive_name}"
+
+  update-homebrew-formula:
+    name: Update Homebrew Formula
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Calculate SHA256 hashes
+        id: sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          aarch64_url="https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-aarch64-apple-darwin.tar.gz"
+          aarch64_sha256=$(curl -sL "${aarch64_url}" | sha256sum | cut -d' ' -f1)
+          echo "aarch64_sha256=${aarch64_sha256}" >> $GITHUB_OUTPUT
+
+          x86_url="https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-x86_64-apple-darwin.tar.gz"
+          x86_sha256=$(curl -sL "${x86_url}" | sha256sum | cut -d' ' -f1)
+          echo "x86_sha256=${x86_sha256}" >> $GITHUB_OUTPUT
+
+          echo "Apple Silicon SHA256: ${aarch64_sha256}"
+          echo "Intel SHA256: ${x86_sha256}"
+
+      - name: Generate Homebrew Formula
+        id: formula
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+          AARCH64_SHA256: ${{ steps.sha256.outputs.aarch64_sha256 }}
+          X86_SHA256: ${{ steps.sha256.outputs.x86_sha256 }}
+        run: |
+          cat > octui.rb << EOF
+          class Octui < Formula
+            desc "GitHub contribution graph in your terminal"
+            homepage "https://github.com/${REPO}"
+            version "${VERSION}"
+
+            if Hardware::CPU.arm?
+              url "https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-aarch64-apple-darwin.tar.gz"
+              sha256 "${AARCH64_SHA256}"
+            else
+              url "https://github.com/${REPO}/releases/download/${TAG}/octui-${VERSION}-x86_64-apple-darwin.tar.gz"
+              sha256 "${X86_SHA256}"
+            end
+
+            depends_on "gh"
+
+            def install
+              bin.install "octui"
+            end
+
+            test do
+              system "#{bin}/octui", "--help"
+            end
+          end
+          EOF
+
+          echo "Generated formula:"
+          cat octui.rb
+
+      - name: Update Homebrew Formula in Main Repo
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          main_repo_url="https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${REPO}.git"
+          git clone "${main_repo_url}" main-repo
+
+          cd main-repo
+          mkdir -p Formula
+          cp ../octui.rb Formula/octui.rb
+
+          git add Formula/octui.rb
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update octui formula to ${VERSION}"
+            git push origin main
+            echo "Formula updated successfully!"
+            echo "Users can install with:"
+            echo "  brew tap ${REPO} https://github.com/${REPO}"
+            echo "  brew install octui"
+          fi
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Publish to crates.io
+        run: cargo publish --allow-dirty --token "$CRATES_IO_TOKEN"
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
