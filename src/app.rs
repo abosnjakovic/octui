@@ -51,20 +51,31 @@ impl App {
 
         match state {
             AppState::Loaded(response) => {
-                let weeks = &response.data.user.contributions_collection.contribution_calendar.weeks;
+                let weeks = &response
+                    .data
+                    .user
+                    .contributions_collection
+                    .contribution_calendar
+                    .weeks;
 
                 // Search for the target date in the grid
                 for (week_idx, week) in weeks.iter().enumerate() {
                     for (day_idx, day) in week.contribution_days.iter().enumerate() {
                         if day.date == target_date {
-                            return Cursor { week: week_idx, day: day_idx };
+                            return Cursor {
+                                week: week_idx,
+                                day: day_idx,
+                            };
                         }
                     }
                 }
 
                 // Fallback: last day with data
                 let week = weeks.len().saturating_sub(1);
-                let day = weeks.get(week).map(|w| w.contribution_days.len().saturating_sub(1)).unwrap_or(0);
+                let day = weeks
+                    .get(week)
+                    .map(|w| w.contribution_days.len().saturating_sub(1))
+                    .unwrap_or(0);
                 Cursor { week, day }
             }
             AppState::Error(_) => Cursor { week: 0, day: 0 },
@@ -124,19 +135,28 @@ impl App {
 
     fn weeks_count(&self) -> usize {
         match &self.state {
-            AppState::Loaded(r) => r.data.user.contributions_collection.contribution_calendar.weeks.len(),
+            AppState::Loaded(r) => r
+                .data
+                .user
+                .contributions_collection
+                .contribution_calendar
+                .weeks
+                .len(),
             AppState::Error(_) => 0,
         }
     }
 
     fn days_in_week(&self, week: usize) -> usize {
         match &self.state {
-            AppState::Loaded(r) => {
-                r.data.user.contributions_collection.contribution_calendar.weeks
-                    .get(week)
-                    .map(|w| w.contribution_days.len())
-                    .unwrap_or(0)
-            }
+            AppState::Loaded(r) => r
+                .data
+                .user
+                .contributions_collection
+                .contribution_calendar
+                .weeks
+                .get(week)
+                .map(|w| w.contribution_days.len())
+                .unwrap_or(0),
             AppState::Error(_) => 0,
         }
     }

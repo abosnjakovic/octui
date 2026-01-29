@@ -4,10 +4,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use std::time::Duration;
 
 pub fn handle_events(app: &mut App) -> Result<bool> {
-    if event::poll(Duration::from_millis(100))? {
-        if let Event::Key(key) = event::read()? {
-            return Ok(handle_key(app, key));
-        }
+    if event::poll(Duration::from_millis(100))?
+        && let Event::Key(key) = event::read()?
+    {
+        return Ok(handle_key(app, key));
     }
     Ok(app.should_quit)
 }

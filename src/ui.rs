@@ -10,7 +10,15 @@ use ratatui::{
 };
 
 const DAY_LABELS: [&str; 7] = ["    ", "Mon ", "    ", "Wed ", "    ", "Fri ", "    "];
-const DAY_NAMES: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_NAMES: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
 
 pub fn render(frame: &mut Frame, app: &App) {
     match &app.state {
@@ -40,7 +48,13 @@ fn render_error(frame: &mut Frame, message: &str) {
     frame.render_widget(paragraph, frame.area());
 }
 
-fn render_graph(frame: &mut Frame, username: &str, calendar: &ContributionCalendar, year: i32, cursor: &Cursor) {
+fn render_graph(
+    frame: &mut Frame,
+    username: &str,
+    calendar: &ContributionCalendar,
+    year: i32,
+    cursor: &Cursor,
+) {
     let [title_area, month_area, grid_area, status_area] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Length(1),
@@ -49,7 +63,13 @@ fn render_graph(frame: &mut Frame, username: &str, calendar: &ContributionCalend
     ])
     .areas(frame.area());
 
-    render_title(frame, title_area, username, calendar.total_contributions, year);
+    render_title(
+        frame,
+        title_area,
+        username,
+        calendar.total_contributions,
+        year,
+    );
     render_month_labels(frame, month_area, &calendar.weeks);
     render_contribution_grid(frame, grid_area, &calendar.weeks, cursor);
     render_status(frame, status_area, &calendar.weeks, cursor);
@@ -93,13 +113,13 @@ fn calculate_month_positions(weeks: &[Week]) -> Vec<(usize, &'static str)> {
     let mut last_month: Option<u32> = None;
 
     for (week_idx, week) in weeks.iter().enumerate() {
-        if let Some(first_day) = week.contribution_days.first() {
-            if let Ok(date) = NaiveDate::parse_from_str(&first_day.date, "%Y-%m-%d") {
-                let month = date.month();
-                if last_month != Some(month) {
-                    last_month = Some(month);
-                    positions.push((week_idx, months[(month - 1) as usize]));
-                }
+        if let Some(first_day) = week.contribution_days.first()
+            && let Ok(date) = NaiveDate::parse_from_str(&first_day.date, "%Y-%m-%d")
+        {
+            let month = date.month();
+            if last_month != Some(month) {
+                last_month = Some(month);
+                positions.push((week_idx, months[(month - 1) as usize]));
             }
         }
     }
@@ -110,7 +130,8 @@ fn calculate_month_positions(weeks: &[Week]) -> Vec<(usize, &'static str)> {
 fn render_contribution_grid(frame: &mut Frame, area: Rect, weeks: &[Week], cursor: &Cursor) {
     let rows: Vec<Row> = (0..7)
         .map(|day_idx| {
-            let label_cell = Cell::from(DAY_LABELS[day_idx]).style(Style::default().fg(Color::Gray));
+            let label_cell =
+                Cell::from(DAY_LABELS[day_idx]).style(Style::default().fg(Color::Gray));
 
             let day_cells: Vec<Cell> = weeks
                 .iter()
@@ -146,7 +167,7 @@ fn render_contribution_grid(frame: &mut Frame, area: Rect, weeks: &[Week], curso
 
 fn render_status(frame: &mut Frame, area: Rect, weeks: &[Week], cursor: &Cursor) {
     let status = get_selected_day(weeks, cursor)
-        .map(|day| format_day_info(day))
+        .map(format_day_info)
         .unwrap_or_default();
 
     let paragraph = Paragraph::new(status).style(Style::default().fg(Color::Gray));
@@ -212,8 +233,7 @@ fn render_help(frame: &mut Frame) {
 
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Paragraph::new(help_text)
-            .block(Block::default().borders(Borders::ALL).title(" Help ")),
+        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title(" Help ")),
         area,
     );
 }

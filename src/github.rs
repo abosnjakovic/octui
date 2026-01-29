@@ -53,7 +53,14 @@ pub fn fetch_contributions(username: Option<&str>, year: i32) -> Result<GraphQLR
     };
 
     let output = Command::new("gh")
-        .args(["api", "graphql", "--cache", "0", "-f", &format!("query={query}")])
+        .args([
+            "api",
+            "graphql",
+            "--cache",
+            "0",
+            "-f",
+            &format!("query={query}"),
+        ])
         .output()
         .context("Failed to execute gh CLI")?;
 

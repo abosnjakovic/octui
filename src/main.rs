@@ -41,7 +41,10 @@ fn main() -> Result<()> {
     result
 }
 
-fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, username: Option<String>) -> Result<()> {
+fn run(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    username: Option<String>,
+) -> Result<()> {
     let mut app = App::new(username);
 
     loop {
