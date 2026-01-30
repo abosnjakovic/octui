@@ -1,6 +1,6 @@
 # octui
 
-A terminal application that displays your GitHub contribution graph, built with Ratatui.
+A vanity inducing, (you shouldn't use this) terminal application that displays your GitHub contribution graph, built with Ratatui.
 
 <img width="1900" height="670" alt="image" src="https://github.com/user-attachments/assets/a571c0c5-ed50-4acc-a631-0f8cc6240591" />
 <img width="1926" height="622" alt="image" src="https://github.com/user-attachments/assets/b79dd164-a3d0-4038-8dba-ca98acafb26c" />
