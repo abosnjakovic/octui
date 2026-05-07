@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release, e.g. v0.1.1"
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,12 +25,18 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
       - name: Resolve version + tag
         id: meta
         env:
           REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          tag="${REF_NAME}"
+          tag="${INPUT_TAG:-$REF_NAME}"
           version="${tag#v}"
           echo "tag=${tag}"         >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -91,6 +103,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -138,6 +152,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          ref: main
+          fetch-depth: 0
 
       - name: Compute SHA256 hashes
         id: sha
@@ -214,7 +230,16 @@ jobs:
             exit 0
           fi
           git commit -m "chore: update homebrew formula to ${VERSION}"
-          git push origin HEAD:main
+
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push rejected; rebasing and retrying ($i/3)…"
+            git pull --rebase origin main
+          done
+          echo "Push failed after retries." >&2
+          exit 1
 
   publish-crates:
     name: Publish to crates.io
