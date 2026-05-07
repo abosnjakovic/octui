@@ -45,6 +45,10 @@ help:
 	@echo "  make publish-crates   - Publish to crates.io"
 	@echo "  make publish-homebrew - Update Formula/$(CRATE).rb and push to main"
 	@echo ""
+	@echo "$(GREEN)release-plz (manual):$(NC)"
+	@echo "  make release-plz-update - Preview version bump + changelog (no PR)"
+	@echo "  make release-plz-pr     - Open release PR on GitHub"
+	@echo ""
 	@echo "$(GREEN)Utilities:$(NC)"
 	@echo "  make run              - cargo run"
 	@echo "  make clean            - cargo clean"
@@ -149,6 +153,22 @@ publish-crates: check-env
 .PHONY: publish-homebrew
 publish-homebrew: check-env
 	./scripts/publish_homebrew.sh
+
+# ── release-plz (manual) ─────────────────────────────────────────────────
+
+.PHONY: release-plz-update
+release-plz-update:
+	@command -v release-plz >/dev/null 2>&1 || { \
+		echo "$(RED)release-plz not installed. Run: cargo install release-plz$(NC)"; exit 1; }
+	release-plz update
+
+.PHONY: release-plz-pr
+release-plz-pr:
+	@command -v release-plz >/dev/null 2>&1 || { \
+		echo "$(RED)release-plz not installed. Run: cargo install release-plz$(NC)"; exit 1; }
+	@command -v gh >/dev/null 2>&1 || { \
+		echo "$(RED)gh CLI required for token.$(NC)"; exit 1; }
+	release-plz release-pr --git-token "$$(gh auth token)"
 
 # ── Utilities ────────────────────────────────────────────────────────────
 
