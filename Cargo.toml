@@ -1,6 +1,6 @@
 [package]
 name = "octui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "GitHub contribution graph in your terminal"
 license = "MIT"
