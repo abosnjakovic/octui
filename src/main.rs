@@ -16,6 +16,7 @@ use std::io::{self, stdout};
 
 #[derive(Parser)]
 #[command(name = "octui")]
+#[command(version)]
 #[command(about = "GitHub contribution graph in your terminal")]
 struct Cli {
     /// GitHub username to display (defaults to authenticated user)

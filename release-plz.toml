@@ -1,0 +1,8 @@
+[workspace]
+changelog_update = true
+git_release_enable = false
+publish = false
+
+[[package]]
+name = "octui"
+tag_name = "v{{ version }}"

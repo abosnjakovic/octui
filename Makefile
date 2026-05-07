@@ -1,125 +1,157 @@
 # octui Development Makefile
 
-# Colors for output
-RED := \033[0;31m
-GREEN := \033[0;32m
-YELLOW := \033[0;33m
-BLUE := \033[0;34m
-NC := \033[0m # No Color
+-include scripts/.env
+export
 
+# Colors
+RED    := \033[0;31m
+GREEN  := \033[0;32m
+YELLOW := \033[0;33m
+BLUE   := \033[0;34m
+NC     := \033[0m
+
+CRATE   := octui
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
 
-# Default target - show help
+.DEFAULT_GOAL := help
+
 .PHONY: help
 help:
-	@echo "$(BLUE)octui Development Commands$(NC)"
+	@echo "$(BLUE)$(CRATE) — Development$(NC)"
 	@echo ""
-	@echo "$(GREEN)Development:$(NC)"
-	@echo "  make lint            - Format code and run clippy"
-	@echo "  make test            - Run tests"
-	@echo "  make check           - Run all checks (lint + test)"
-	@echo "  make run             - Run octui locally"
+	@echo "$(GREEN)Setup:$(NC)"
+	@echo "  make setup            - Copy scripts/.env.example to scripts/.env"
+	@echo "  make check-env        - Verify CRATES_IO_TOKEN + HOMEBREW_TAP_TOKEN"
 	@echo ""
-	@echo "$(GREEN)Building:$(NC)"
-	@echo "  make build           - Build debug binary"
-	@echo "  make build-release   - Build release binary for Apple Silicon"
-	@echo "  make build-all       - Build release binaries for all targets"
+	@echo "$(GREEN)Quality:$(NC)"
+	@echo "  make lint             - cargo fmt + cargo clippy --all-targets -- -D warnings"
+	@echo "  make test             - cargo test"
+	@echo "  make doc              - cargo doc with -D warnings"
+	@echo "  make check            - lint + test + doc (mirrors CI)"
 	@echo ""
-	@echo "$(GREEN)Publishing (dry-run):$(NC)"
-	@echo "  make test-crates     - Test crates.io publishing (dry-run)"
+	@echo "$(GREEN)Build:$(NC)"
+	@echo "  make build            - Debug build"
+	@echo "  make build-release    - Release build for host"
+	@echo "  make build-apple      - Release build for aarch64-apple-darwin"
+	@echo "  make build-all        - Release build for all release targets"
+	@echo "  make create-archives  - tar host release binary into target/release-archives/"
 	@echo ""
-	@echo "$(GREEN)Publishing (actual):$(NC)"
-	@echo "  make publish-crates  - Actually publish to crates.io"
+	@echo "$(GREEN)Dry-runs:$(NC)"
+	@echo "  make test-crates      - cargo publish --dry-run"
+	@echo "  make test-homebrew    - Generate target/homebrew/$(CRATE).rb"
+	@echo "  make test-release     - Full local release simulation"
+	@echo ""
+	@echo "$(GREEN)Publish (interactive):$(NC)"
+	@echo "  make publish-crates   - Publish to crates.io"
+	@echo "  make publish-homebrew - Update Formula/$(CRATE).rb and push to main"
 	@echo ""
 	@echo "$(GREEN)Utilities:$(NC)"
-	@echo "  make clean           - Clean build artifacts"
-	@echo "  make create-archives - Create release archives"
+	@echo "  make run              - cargo run"
+	@echo "  make clean            - cargo clean"
 	@echo ""
 	@echo "$(YELLOW)Current version: $(VERSION)$(NC)"
 
-# Lint - format and check code
+# ── Setup ────────────────────────────────────────────────────────────────
+
+.PHONY: setup
+setup:
+	@if [ -f scripts/.env ]; then \
+		echo "$(YELLOW)scripts/.env already exists; not overwriting.$(NC)"; \
+	else \
+		cp scripts/.env.example scripts/.env; \
+		echo "$(GREEN)✓ Wrote scripts/.env (edit it to fill in tokens)$(NC)"; \
+	fi
+
+.PHONY: check-env
+check-env:
+	@missing=""; \
+	[ -n "$$CRATES_IO_TOKEN" ]    || missing="$$missing CRATES_IO_TOKEN"; \
+	[ -n "$$HOMEBREW_TAP_TOKEN" ] || missing="$$missing HOMEBREW_TAP_TOKEN"; \
+	if [ -n "$$missing" ]; then \
+		echo "$(RED)Missing:$$missing$(NC)"; \
+		echo "Set them in scripts/.env (see scripts/.env.example)."; \
+		exit 1; \
+	fi; \
+	echo "$(GREEN)✓ All required tokens present$(NC)"
+
+# ── Quality ──────────────────────────────────────────────────────────────
+
 .PHONY: lint
 lint:
-	@echo "$(BLUE)Formatting code...$(NC)"
+	@echo "$(BLUE)cargo fmt$(NC)"
 	cargo fmt
-	@echo "$(BLUE)Running clippy...$(NC)"
-	cargo clippy -- -D warnings
+	@echo "$(BLUE)cargo clippy --all-targets -- -D warnings$(NC)"
+	cargo clippy --all-targets -- -D warnings
 	@echo "$(GREEN)✓ Lint passed$(NC)"
 
-# Run tests
 .PHONY: test
 test:
-	@echo "$(BLUE)Running tests...$(NC)"
 	cargo test --verbose
-	@echo "$(GREEN)✓ Tests passed$(NC)"
 
-# Run all checks (mirrors CI)
+.PHONY: doc
+doc:
+	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+
 .PHONY: check
-check: lint test
-	@echo "$(BLUE)Checking documentation...$(NC)"
-	cargo doc --no-deps --document-private-items
+check: lint test doc
 	@echo "$(GREEN)✓ All checks passed$(NC)"
 
-# Run locally
+# ── Build ────────────────────────────────────────────────────────────────
+
 .PHONY: run
 run:
 	cargo run
 
-# Build debug binary
 .PHONY: build
 build:
 	cargo build
 
-# Build release binary for Apple Silicon
 .PHONY: build-release
 build-release:
-	@echo "$(BLUE)Building for Apple Silicon (aarch64-apple-darwin)...$(NC)"
-	cargo build --release --target aarch64-apple-darwin
-	@echo "$(GREEN)✓ Built Apple Silicon binary$(NC)"
+	cargo build --release
 
-# Build release binaries for all macOS targets
+.PHONY: build-apple
+build-apple:
+	cargo build --release --target aarch64-apple-darwin
+
 .PHONY: build-all
 build-all:
-	@echo "$(BLUE)Building for Apple Silicon...$(NC)"
 	cargo build --release --target aarch64-apple-darwin
-	@echo "$(BLUE)Building for Intel...$(NC)"
 	cargo build --release --target x86_64-apple-darwin
-	@echo "$(GREEN)✓ Built all release binaries$(NC)"
+	cargo build --release --target x86_64-unknown-linux-gnu
 
-# Test crates.io publishing (dry-run)
+.PHONY: create-archives
+create-archives: build-release
+	@mkdir -p target/release-archives
+	@tar -C target/release -czf "target/release-archives/$(CRATE)-$(VERSION)-host.tar.gz" $(CRATE)
+	@echo "$(GREEN)✓ target/release-archives/$(CRATE)-$(VERSION)-host.tar.gz$(NC)"
+
+# ── Dry-runs ─────────────────────────────────────────────────────────────
+
 .PHONY: test-crates
 test-crates:
-	@echo "$(BLUE)Testing crates.io publishing (dry-run)...$(NC)"
-	cargo publish --dry-run
-	@echo "$(GREEN)✓ Dry-run passed$(NC)"
+	./scripts/publish_crates.sh --dry-run
 
-# Actually publish to crates.io
+.PHONY: test-homebrew
+test-homebrew:
+	./scripts/publish_homebrew.sh --dry-run
+
+.PHONY: test-release
+test-release:
+	./scripts/test_release.sh
+
+# ── Publish ──────────────────────────────────────────────────────────────
+
 .PHONY: publish-crates
-publish-crates:
-	@echo "$(YELLOW)⚠ This will ACTUALLY publish octui $(VERSION) to crates.io!$(NC)"
-	@read -p "Are you sure? (y/N) " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		cargo publish; \
-	else \
-		echo "$(YELLOW)Cancelled$(NC)"; \
-	fi
+publish-crates: check-env
+	./scripts/publish_crates.sh
 
-# Create release archives
-.PHONY: create-archives
-create-archives: build-all
-	@echo "$(BLUE)Creating release archives...$(NC)"
-	@mkdir -p target/release-archives
-	@cd target/aarch64-apple-darwin/release && \
-	tar czf ../../release-archives/octui-$(VERSION)-aarch64-apple-darwin.tar.gz octui && \
-	echo "$(GREEN)✓ Created Apple Silicon archive$(NC)"
-	@cd target/x86_64-apple-darwin/release && \
-	tar czf ../../release-archives/octui-$(VERSION)-x86_64-apple-darwin.tar.gz octui && \
-	echo "$(GREEN)✓ Created Intel archive$(NC)"
+.PHONY: publish-homebrew
+publish-homebrew: check-env
+	./scripts/publish_homebrew.sh
 
-# Clean build artifacts
+# ── Utilities ────────────────────────────────────────────────────────────
+
 .PHONY: clean
 clean:
-	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
 	cargo clean
-	@echo "$(GREEN)✓ Cleaned$(NC)"
